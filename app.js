@@ -1,54 +1,67 @@
 /* ============================================================
-   CTG — shared data layer (Firebase Firestore + Auth)
+   CTG — shared data layer (Supabase database + Auth)
 
-   Every page loads firebase-config.js, then this file (and, on
-   pages with translated text, i18n.js). Nothing here needs
-   editing during setup — only firebase-config.js and the
-   Firestore rules in the console. See SETUP.md.
+   Every page loads the Supabase library, supabase-config.js,
+   then this file (and, on pages with translated text, i18n.js).
+   Nothing here needs editing during setup — only
+   supabase-config.js and supabase/schema.sql. See SETUP.md.
    ============================================================ */
 
-/* ---------- Turning Firebase error codes into plain English ---------- */
+/* ---------- Turning database error codes into plain English ---------- */
 
-function describeFirebaseError(err) {
+function describeDbError(err) {
   const code = (err && err.code) || '';
+  const msg = (err && err.message) || '';
 
-  if (code === 'permission-denied' || code === 'auth/insufficient-permission') {
+  if (code === 'config-missing') {
+    return {
+      title: "The project keys haven't been filled in",
+      body: "supabase-config.js didn't load, or still has the PASTE_… placeholders in it.",
+      fix: "Put your Project URL and anon key into supabase-config.js."
+    };
+  }
+  if (code === 'not-admin') {
+    return {
+      title: "This account isn't on the admin list",
+      body: "You're signed in, but the database doesn't treat this account as an admin, " +
+            "so private submissions stay hidden.",
+      fix: "Supabase dashboard → SQL Editor → insert this UID into public.admins (see the bottom of supabase/schema.sql)."
+    };
+  }
+  if (code === '42501') {
     return {
       title: "The database refused the request",
-      body: "Firestore is connected, but its security rules are blocking this. " +
-            "Usually the rules were never published, or the admin UID list in " +
-            "them is empty.",
-      fix: "Firebase console \u2192 Firestore Database \u2192 Rules \u2192 paste firestore.rules \u2192 Publish."
+      body: "Supabase is connected, but its Row Level Security policies are blocking this.",
+      fix: "Supabase dashboard → SQL Editor → run supabase/schema.sql again."
     };
   }
-  if (code === 'unavailable' || code === 'auth/network-request-failed') {
+  if (code === '42P01' || code === 'PGRST205' || code === 'PGRST202') {
     return {
-      title: "Couldn't reach Firebase",
-      body: "The browser couldn't connect. Usually this is the internet connection, " +
-            "or an extension or school network blocking googleapis.com.",
-      fix: "Check your connection, then reload the page."
+      title: "The database tables don't exist yet",
+      body: "The project exists, but the tables this site uses haven't been created.",
+      fix: "Supabase dashboard → SQL Editor → paste supabase/schema.sql → Run."
     };
   }
-  if (code === 'not-found' || code === 'failed-precondition') {
-    return {
-      title: "No Firestore database found in this project",
-      body: "The project exists, but Firestore itself hasn't been created yet, " +
-            "or it was created as \u201cDatastore mode\u201d rather than Native mode.",
-      fix: "Firebase console \u2192 Build \u2192 Firestore Database \u2192 Create database."
-    };
-  }
-  if (code === 'auth/invalid-api-key' || code === 'auth/api-key-not-valid' ||
-      code === 'invalid-argument') {
+  if (/invalid api key|no api key/i.test(msg)) {
     return {
       title: "The project keys look wrong",
-      body: "Firebase rejected the keys in firebase-config.js.",
-      fix: "Re-copy the config block from Project settings \u2192 Your apps."
+      body: "Supabase rejected the key in supabase-config.js.",
+      fix: "Re-copy the Project URL and anon key from Project Settings → API."
+    };
+  }
+  if (err instanceof TypeError || /failed to fetch|network/i.test(msg)) {
+    return {
+      title: "Couldn't reach Supabase",
+      body: "The browser couldn't connect. Usually this is the internet connection, " +
+            "or an extension or school network blocking supabase.co. " +
+            "Free Supabase projects also pause after a week without visits.",
+      fix: "Check your connection and that the project isn't paused, then reload the page."
     };
   }
   return {
     title: "Something went wrong talking to the database",
-    body: (err && err.message) ? err.message : String(err),
-    fix: "Open the browser console (right-click \u2192 Inspect \u2192 Console) for the full message."
+    body: msg || String(err),
+    fix: "Open the browser console (right-click → Inspect → Console) for the full message."
   };
 }
 
@@ -56,7 +69,7 @@ function showTrouble(elId, err) {
   const el = document.getElementById(elId);
   console.error('[CTG]', err);
   if (!el) return;
-  const d = describeFirebaseError(err);
+  const d = describeDbError(err);
   el.innerHTML =
     '<strong>' + escapeHtml(d.title) + '</strong>' +
     escapeHtml(d.body) +
@@ -71,13 +84,13 @@ function hideTrouble(elId) {
   if (el) el.classList.remove('show');
 }
 
-/* ---------- Guard: did firebase-config.js actually run? ---------- */
+/* ---------- Guard: did supabase-config.js actually run? ---------- */
 
-const CONFIG_OK = (typeof db !== 'undefined' && typeof auth !== 'undefined');
+const CONFIG_OK = (typeof sb !== 'undefined' && !!sb);
 
 if (!CONFIG_OK) {
-  console.error('[CTG] firebase-config.js did not initialise. ' +
-                'Check that the file exists in this folder and has no typos.');
+  console.error('[CTG] supabase-config.js did not initialise. ' +
+                'Check that the file exists in this folder and the keys are filled in.');
 }
 
 /* ============================================================
@@ -92,7 +105,7 @@ if (!CONFIG_OK) {
    ============================================================ */
 
 function detectLang(text) {
-  return /[\uAC00-\uD7A3]/.test(text || '') ? 'ko' : 'en';
+  return /[가-힣]/.test(text || '') ? 'ko' : 'en';
 }
 
 async function translateText(text, sourceLang, targetLang) {
@@ -123,6 +136,51 @@ async function draftBilingual(text) {
 }
 
 /* ============================================================
+   Live queries
+
+   Supabase returns { data, error } instead of throwing, so
+   `must()` turns an error into a thrown one. `liveTable()`
+   loads a table, then reloads it whenever Supabase Realtime
+   reports a change — and also right after this browser changes
+   something, so the page updates even if Realtime is off.
+   ============================================================ */
+
+function must({ data, error }) {
+  if (error) throw error;
+  return data;
+}
+
+const liveReloaders = {};   // table name -> Set of reload functions
+
+function liveTable(table, mapRow, callback, onError) {
+  let stopped = false;
+  const reload = async () => {
+    try {
+      const rows = must(await sb.from(table).select('*').order('date', { ascending: false }));
+      if (!stopped) callback(rows.map(mapRow));
+    } catch (err) {
+      if (!stopped && onError) onError(err);
+    }
+  };
+
+  (liveReloaders[table] = liveReloaders[table] || new Set()).add(reload);
+  const channel = sb.channel('ctg-' + table + '-' + Math.random().toString(36).slice(2))
+    .on('postgres_changes', { event: '*', schema: 'public', table }, reload)
+    .subscribe();
+  reload();
+
+  return () => {
+    stopped = true;
+    liveReloaders[table].delete(reload);
+    sb.removeChannel(channel);
+  };
+}
+
+function refreshLive(table) {
+  (liveReloaders[table] || []).forEach(fn => fn());
+}
+
+/* ============================================================
    PrayerBoard — the whole data layer
    ============================================================ */
 
@@ -133,109 +191,105 @@ const PrayerBoard = {
   // the way in. Translation only happens when an admin publishes a
   // question to the public board.
 
-  addSubmission({ type, name, message }) {
-    return db.collection('submissions').add({
+  async addSubmission({ type, name, message }) {
+    // No .select() afterwards: visitors may insert but not read back.
+    must(await sb.from('submissions').insert({
       type,                                  // 'ask' | 'prayer'
       name: (name || '').trim(),
       message: (message || '').trim(),
-      date: firebase.firestore.FieldValue.serverTimestamp(),
-      seen: false,
-    });
+    }));
   },
 
   onSubmissions(callback, onError) {
-    return db.collection('submissions').orderBy('date', 'desc').onSnapshot(
-      snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
-      err => onError && onError(err)
-    );
+    return liveTable('submissions', row => row, callback, onError);
   },
 
-  deleteSubmission(id) {
-    return db.collection('submissions').doc(id).delete();
+  async deleteSubmission(id) {
+    must(await sb.from('submissions').delete().eq('id', id));
+    refreshLive('submissions');
   },
 
-  setSubmissionSeen(id, seen) {
-    return db.collection('submissions').doc(id).update({ seen: !!seen });
+  async setSubmissionSeen(id, seen) {
+    must(await sb.from('submissions').update({ seen: !!seen }).eq('id', id));
+    refreshLive('submissions');
   },
 
   // question_* / answer_* are the bilingual pairs the admin has already
   // reviewed (see the "translate & review" step in admin.html).
   async publishSubmissionToBoard(id, { question_en, question_ko, answer_en, answer_ko }) {
-    const doc = await db.collection('submissions').doc(id).get();
-    if (!doc.exists) return;
-    const item = doc.data();
+    const item = must(await sb.from('submissions').select('type').eq('id', id).maybeSingle());
+    if (!item) return;
     if (item.type !== 'ask') throw new Error('Only questions can be posted to the board.');
-    await db.collection('board').add({
+    must(await sb.from('board').insert({
       question_en: (question_en || '').trim(),
       question_ko: (question_ko || '').trim(),
       answer_en: (answer_en || '').trim(),
       answer_ko: (answer_ko || '').trim(),
-      date: firebase.firestore.FieldValue.serverTimestamp(),
-    });
-    await db.collection('submissions').doc(id).delete();
+    }));
+    must(await sb.from('submissions').delete().eq('id', id));
+    refreshLive('board');
+    refreshLive('submissions');
   },
 
   /* ---------------- Board (public, bilingual, answered questions) ---------------- */
 
   onBoard(callback, onError) {
-    return db.collection('board').orderBy('date', 'desc').onSnapshot(
-      snap => callback(snap.docs.map(d => ({ id: d.id, ...normalizeBoardEntry(d.data()) }))),
-      err => onError && onError(err)
-    );
+    return liveTable('board', row => row, callback, onError);
   },
 
-  addBoardEntry({ question_en, question_ko, answer_en, answer_ko }) {
-    return db.collection('board').add({
+  async addBoardEntry({ question_en, question_ko, answer_en, answer_ko }) {
+    must(await sb.from('board').insert({
       question_en: (question_en || '').trim(),
       question_ko: (question_ko || '').trim(),
       answer_en: (answer_en || '').trim(),
       answer_ko: (answer_ko || '').trim(),
-      date: firebase.firestore.FieldValue.serverTimestamp(),
-    });
+    }));
+    refreshLive('board');
   },
 
-  updateBoardEntry(id, { question_en, question_ko, answer_en, answer_ko }) {
+  async updateBoardEntry(id, { question_en, question_ko, answer_en, answer_ko }) {
     const data = {};
     if (question_en !== undefined) data.question_en = question_en.trim();
     if (question_ko !== undefined) data.question_ko = question_ko.trim();
     if (answer_en !== undefined) data.answer_en = answer_en.trim();
     if (answer_ko !== undefined) data.answer_ko = answer_ko.trim();
-    return db.collection('board').doc(id).update(data);
+    must(await sb.from('board').update(data).eq('id', id));
+    refreshLive('board');
   },
 
-  deleteBoardEntry(id) {
-    return db.collection('board').doc(id).delete();
+  async deleteBoardEntry(id) {
+    must(await sb.from('board').delete().eq('id', id));
+    refreshLive('board');
   },
 
   /* ---------------- Admin auth ---------------- */
 
-  signIn(email, password) {
-    return auth.signInWithEmailAndPassword(email, password);
+  async signIn(email, password) {
+    const { error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) throw error;
   },
-  signOut() {
-    return auth.signOut();
+  async signOut() {
+    await sb.auth.signOut();
   },
+  // Calls back with { uid, email } when signed in, null when not.
   onAuthChange(callback) {
-    return auth.onAuthStateChanged(callback);
+    let lastUid;
+    const { data } = sb.auth.onAuthStateChange((_event, session) => {
+      const user = session && session.user;
+      const uid = user ? user.id : null;
+      if (uid === lastUid) return;          // ignore token refreshes
+      lastUid = uid;
+      // Defer: Supabase recommends not awaiting other calls inside this callback.
+      setTimeout(() => callback(user ? { uid: user.id, email: user.email } : null), 0);
+    });
+    return () => data.subscription.unsubscribe();
   },
-  currentUid() {
-    return auth.currentUser ? auth.currentUser.uid : null;
+  // A non-admin's read of submissions comes back empty rather than as an
+  // error, so the admin page asks the database directly.
+  async isAdmin() {
+    return !!must(await sb.rpc('is_admin'));
   },
 };
-
-// Older board entries (from before the bilingual redesign) only have
-// plain `question` / `answer` fields. Show that same text in both
-// languages rather than leaving one blank.
-function normalizeBoardEntry(data) {
-  if (data.question_en !== undefined || data.question_ko !== undefined) return data;
-  return {
-    ...data,
-    question_en: data.question || '',
-    question_ko: data.question || '',
-    answer_en: data.answer || '',
-    answer_ko: data.answer || '',
-  };
-}
 
 /* ============================================================
    Small helpers used by every page
@@ -243,7 +297,7 @@ function normalizeBoardEntry(data) {
 
 function formatDate(ts) {
   if (!ts) return 'Just now';
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  const d = new Date(ts);
   return d.toLocaleString(undefined, {
     month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
   });
@@ -255,9 +309,9 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// True if a Firestore Timestamp is within the last `days` days.
+// True if a timestamp (ISO string from the database) is within the last `days` days.
 function isWithinDays(ts, days) {
-  if (!ts || !ts.toDate) return false;
-  const ms = Date.now() - ts.toDate().getTime();
+  if (!ts) return false;
+  const ms = Date.now() - new Date(ts).getTime();
   return ms >= 0 && ms < days * 24 * 60 * 60 * 1000;
 }

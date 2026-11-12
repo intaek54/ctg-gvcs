@@ -1,151 +1,96 @@
-# CTG — 17th Student Council site
+# CTG — 17기 학생회 사이트 설정 안내
 
-## What's new in this version
-
-- **Home and Answers are now separate pages.** The home page only shows board answers from the last 7 days; if nothing's new, it shows a link to `answers.html` instead of an empty box. `answers.html` holds the full, searchable history — nothing is ever deleted from there, it just ages off the home page.
-- **The admin panel is now tabbed** — Questions / Prayer requests / Board — instead of one long scroll.
-- **A language toggle (EN / KO)** sits in the nav on every public page. It remembers your choice (stored in the browser, not the database) and applies instantly, no reload.
-- **Board answers are now bilingual.** When an admin publishes a question or adds something directly, they type it in *either* language, click **Translate & review**, and a machine-translated draft of the other language appears — editable before anything goes live. Nothing is ever posted pre-translation without a chance to fix it.
-
-### A note on the translation
-The draft comes from a free translation API (MyMemory) called directly from the browser — no signup needed for normal use. It's a solid first draft, not a professional translation, which is exactly why admins review and can edit both fields before publishing. If your Facebook page needs a nicer translation for something important, feel free to hand-edit either box before hitting the final button — nothing saves until you do.
-
-One limit: the free tier allows roughly 5,000 characters translated per day per visitor IP (about 50,000/day if you add a contact email — see the `translateText` function in `app.js` if you ever want to add one). A student council's normal usage should stay well under this.
-
-### A note on old board entries
-If you had entries on the board from before this update, they only had one language. They'll still display correctly — the code shows the same text in both EN and KO for those until an admin edits them with a real translation.
-
-## Two things were broken before, and both are fixed
-
-**The logo wasn't showing** because there was no image file in the folder at all — the zip contained only the eight code files, so `gtc-logo.png` was a dead link on every page. The logo is now embedded *inside* `styles.css` as data, so it draws itself with nothing to download. `gtc-logo.png` and `favicon.png` are also included for the browser tab.
-
-**The data wasn't going anywhere** because Firestore was refusing every request. You can tell from the recording: on the home page, the "Answered" board showed neither entries *nor* the "Nothing posted yet" message, and the admin page showed neither submissions *nor* "No new questions right now." An empty database still shows those messages. Showing nothing at all means the request failed before any answer came back — almost certainly the security rules were never published, so Firestore's default "deny everything" was still in force.
-
-The old code swallowed that error into the browser console where you'd never see it. The new code puts it on the screen in plain English, with the exact fix. Work through the steps below and it will go green.
+- **데이터베이스와 관리자 로그인:** Supabase를 써요.
+- **배포:** Vercel을 써요. 주소는 https://ctg-gvcs.vercel.app 이에요.
+- **코드:** GitHub에 올려 둬요.
 
 ---
 
-## Setup — about 10 minutes
+## 1. Supabase 프로젝트 만들기
 
-Do these in order. Steps 1–2 you have probably done already; check them anyway.
+1. [supabase.com](https://supabase.com)에 로그인하고 **New project**를 누르세요.
+   - 이름은 `ctg`처럼 아무거나 쓰셔도 돼요.
+   - Region은 **Northeast Asia (Seoul)**을 고르세요.
+   - 데이터베이스 비밀번호는 따로 적어 두세요. 이 사이트에서는 쓰지 않아요.
+2. 프로젝트가 만들어지면 **Project Settings → API**(또는 **Data API**)로 가서 아래 두 값을 복사하세요.
+   - **Project URL**: `https://xxxx.supabase.co` 형태예요.
+   - **anon public** 키(또는 **publishable** 키)
+3. 복사한 두 값을 `supabase-config.js`의 `PASTE_…` 자리에 붙여 넣으세요.
 
-### 1. Open your project
+> ⚠️ **service_role**(또는 **secret**) 키는 절대 넣지 마세요. 그 키를 가진 사람은 기도 제목을 포함한 모든 데이터를 볼 수 있어요.
+> 반대로 anon 키는 공개돼도 괜찮아요. 데이터를 지키는 건 아래 2단계의 보안 규칙(RLS)이에요.
 
-Go to [console.firebase.google.com](https://console.firebase.google.com) and open **ctg17thstudentcouncil**.
+## 2. 테이블과 보안 규칙 만들기
 
-If that project doesn't exist, click **Add project**, create it, and then do step 7 at the end to get your new keys.
+1. Supabase 대시보드에서 **SQL Editor → New query**를 누르세요.
+2. `supabase/schema.sql` 파일 내용을 전부 붙여 넣고 **Run**을 누르세요.
+   - 이 SQL이 만드는 테이블은 이래요.
+     - `submissions`: 질문과 기도 제목이 들어가요. 관리자만 볼 수 있어요.
+     - `board`: 답변 게시판이에요. 누구나 볼 수 있어요.
+     - `admins`: 관리자 목록이에요.
+   - 여러 번 실행해도 문제없어요.
 
-### 2. Create the Firestore database
+## 3. 관리자 계정 만들기
 
-Left sidebar → **Build** → **Firestore Database**.
+1. **Authentication → Users → Add user → Create new user**로 가세요.
+   - 이메일과 비밀번호를 넣고, **Auto Confirm User**를 체크하세요.
+2. **SQL Editor**에서 아래 SQL을 실행하세요. 이메일 부분은 방금 만든 계정의 이메일로 바꾸세요.
+   ```sql
+   insert into public.admins (user_id)
+   select id from auth.users where email = '관리자@이메일.com';
+   ```
+   관리자가 여러 명이면 사람마다 1~2번을 반복하세요.
 
-- If you see a **Create database** button, click it. Choose **Start in production mode**, pick a location near Korea (`asia-northeast3` is Seoul), and create it.
-- If you see a data table instead, it already exists. Good.
+## 4. 아무나 가입하지 못하게 막기
 
-One thing to check: at the top it should say **Native mode**, not *Datastore mode*. Datastore mode can't be used from a website and can't be switched — you'd need a new project.
+**Authentication → Sign In / Providers**로 가서 **Allow new users to sign up**을 끄세요.
 
-### 3. Turn on email/password login
+이걸 꺼도 이미 만든 관리자 계정은 그대로 로그인할 수 있어요.
 
-**Build** → **Authentication** → **Get started**.
+## 5. 로그인 주소 등록
 
-Under **Sign-in method**, click **Email/Password**, switch **Enable** on, and **Save**.
-
-### 4. Create your admin account and copy the UID
-
-Still in Authentication, go to the **Users** tab → **Add user**. Enter the email and password you'll log in with. Make one per staff member.
-
-Now look at the row that appears. The last column is **User UID** — a long string like `k3Jd9xQm2bV...`. **Copy it.** Hover over it and a copy icon appears.
-
-### 5. Publish the security rules ← this is the step that was missing
-
-Go back to **Firestore Database** → the **Rules** tab.
-
-Open `firestore.rules` from this folder in any text editor. Find this line near the top:
-
-```
-        'PASTE_YOUR_UID_HERE'
-```
-
-Replace `PASTE_YOUR_UID_HERE` with the UID you copied in step 4, keeping the quotes. For several staff members, one per line with commas between:
-
-```
-        'k3Jd9xQm2bV...',
-        'p8Hn4zRw6cY...'
-```
-
-Then select the whole file, copy it, paste it over everything in the Rules box, and click **Publish**.
-
-**Publish is not optional.** Edited-but-unpublished rules do nothing, and this is the most likely reason nothing was saving before.
-
-### 6. Close the back door
-
-**Authentication** → **Settings** tab → **User actions** → untick **Enable create (sign-up)** → **Save**.
-
-Without this, anyone who views your page source can sign themselves up. They still wouldn't get past the UID list in step 5, but there's no reason to let strangers create accounts at all. Do this *after* step 4, or you won't be able to add your own users.
-
-### 7. Only if you made a brand-new project
-
-**Project settings** (gear icon) → **Your apps** → the **`</>`** web icon → nickname it → **Register app**. Copy the `firebaseConfig` block it shows you, and paste it over the one in `firebase-config.js`.
-
-If you're using the existing `ctg17thstudentcouncil` project, skip this — the keys are already in the file.
+**Authentication → URL Configuration**으로 가서 **Site URL**에 `https://ctg-gvcs.vercel.app`을 넣으세요.
 
 ---
 
-## Test it
+## 확인하기
 
-1. Open `index.html` (Live Server is fine — that's what you were using).
-2. The logo should appear, top right, immediately.
-3. Send a test question and a test prayer from the two forms. You should see a green confirmation.
-4. Go to `admin.html`, log in with the account from step 4.
-5. At the top, the **Connection check** should show three ticks:
-   - Signed in
-   - Public board: readable
-   - Private submissions: readable
-6. Your two test messages should be listed. Answer the question, post it, and check the home page — it should appear under "Answered" without a refresh.
+1. https://ctg-gvcs.vercel.app 에서 질문과 기도 제목을 하나씩 보내 보세요. 초록색 확인 메시지가 떠야 해요.
+2. 왼쪽 위 로고를 눌러 `admin.html`로 가서 관리자 계정으로 로그인하세요.
+3. **Connection check**에 체크 표시가 3개 떠야 해요.
+4. 질문에 답하고 게시판에 올린 다음, 홈 화면에 그 답변이 보이는지 확인하세요.
 
----
+## 문제가 생기면
 
-## If something still fails
-
-The connection check and the orange banner tell you which part broke and what to do. The error codes mean:
-
-| What you see | What it means |
+| 화면에 보이는 것 | 뜻 |
 |---|---|
-| `permission-denied` | Rules not published, or your UID isn't in the list (steps 4–5) |
-| `not-found` / `failed-precondition` | Firestore database not created, or in Datastore mode (step 2) |
-| `auth/operation-not-allowed` | Email/password sign-in still off (step 3) |
-| `auth/invalid-credential` | Wrong email or password |
-| `unavailable` | No internet, or the school network blocks `googleapis.com` |
-| `config-missing` | `firebase-config.js` isn't in the same folder as the page |
+| `config-missing` | `supabase-config.js`에 키가 아직 안 들어갔어요 (1단계) |
+| `PGRST205` / `42P01` | 테이블이 아직 없어요. `schema.sql`을 실행하세요 (2단계) |
+| `42501` | 보안 규칙이 막고 있어요. `schema.sql`을 다시 실행하세요 |
+| `not-admin` | 로그인은 됐지만 `admins` 목록에 없는 계정이에요 (3단계) |
+| `invalid_credentials` | 이메일이나 비밀번호가 틀렸어요 |
+| `email_not_confirmed` | 계정 이메일 인증이 안 됐어요. **Auto Confirm User**로 다시 만드세요 |
+| Couldn't reach Supabase | 인터넷 연결을 확인하세요. 무료 프로젝트는 일주일 동안 접속이 없으면 일시 정지되니, 대시보드에서 **Restore**를 누르세요 |
 
-For anything else, right-click → **Inspect** → **Console**. Every error is logged there with a `[CTG]` prefix.
+자세한 오류 내용은 브라우저에서 우클릭 → **검사** → **Console**을 열면 `[CTG]`로 시작하는 메시지로 볼 수 있어요.
 
----
+## 번역 기능 참고
 
-## Files in this folder
+관리자가 답변을 올릴 때 쓰는 자동 번역은 무료 API인 MyMemory를 사용해요.
+- 하루에 IP당 약 5,000자까지 번역할 수 있어요.
+- 번역 결과는 초안이에요. 올리기 전에 직접 다듬을 수 있어요.
 
-| File | What it is |
+## 파일 구성
+
+| 파일 | 역할 |
 |---|---|
-| `index.html` | Home page — header, the two buttons, the public Answered board |
-| `ask-the-pastor.html` | Question form. Answers can be posted publicly |
-| `send-your-prayer.html` | Prayer form. Private, never posted |
-| `admin.html` | Login, plus Questions / Prayer requests / Board editor |
-| `app.js` | Shared data layer and error messages |
-| `styles.css` | All styling, with the logo embedded |
-| `firebase-config.js` | Your project keys |
-| `firestore.rules` | Paste this into the console (step 5) |
-| `gtc-logo.png`, `favicon.png` | Logo and tab icon |
-
----
-
-## A note on privacy
-
-Prayer requests can only be read by the accounts whose UID you listed in the rules. Not by other students, not by anyone who finds the URL, not by someone who signs up for a Firebase account of their own. The rules are what enforce that — the login form is just the front door.
-
-The keys in `firebase-config.js` are safe to publish. Firebase web keys identify a project; they don't grant access to anything. This is by design, and it's why the rules matter so much.
-
-## Hosting it
-
-Right now you're opening the files locally. To put it online, drag this whole folder onto [app.netlify.com/drop](https://app.netlify.com/drop), or push it to a GitHub repo and turn on **Settings → Pages**. Nothing in the code needs to change.
-
-One thing to do afterwards: in **Authentication → Settings → Authorized domains**, add whatever domain you end up with, or admin login will be refused there.
+| `index.html` | 홈 화면 (최근 7일 동안 올라온 답변) |
+| `answers.html` | 전체 답변 (검색 가능) |
+| `ask-the-pastor.html` | 질문 보내기 |
+| `send-your-prayer.html` | 기도 제목 보내기 (비공개) |
+| `admin.html` | 관리자 페이지 |
+| `app.js` | 데이터베이스 연결과 오류 메시지 |
+| `supabase-config.js` | Supabase 주소와 공개 키 |
+| `supabase/schema.sql` | 테이블과 보안 규칙 (Supabase SQL Editor에서 실행) |
+| `i18n.js` | 영어/한국어 전환 |
+| `styles.css` | 디자인 |

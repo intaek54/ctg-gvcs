@@ -23,7 +23,7 @@
       <div class="admin-gate-error" id="gate-error"></div>
       <button type="submit" class="btn" id="gate-btn" style="width:100%;" data-i18n="admin_enter">Enter</button>
     </form>
-    <p class="gate-note" data-i18n="admin_note">Accounts are created in the Firebase console. There is no public sign-up.</p>
+    <p class="gate-note" data-i18n="admin_note">Accounts are created in the Supabase dashboard. There is no public sign-up.</p>
   </div>
 </div>
 
@@ -108,10 +108,8 @@
   <a class="back-link" href="index.html" style="margin-left:0;" data-i18n="back_public">&larr; Back to public site</a>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="firebase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="supabase-config.js"></script>
 <script src="app.js"></script>
 <script src="i18n.js"></script>
 <script>
@@ -165,11 +163,24 @@
     unsubSubmissions = unsubBoard = null;
   }
 
-  function showAdmin(user) {
+  async function showAdmin(user) {
     gate.style.display = 'none';
     shell.classList.add('show');
     mark('chk-auth-icon', 'ok');
     document.getElementById('chk-uid').textContent = '(UID ' + user.uid + ')';
+    // A non-admin's read of submissions comes back empty, not refused, so
+    // check the admin list first instead of showing a misleading empty inbox.
+    try {
+      if (!(await PrayerBoard.isAdmin())) {
+        mark('chk-subs-icon', 'bad', 'Private submissions: this account is not an admin', 'chk-subs-text');
+        showTrouble('trouble', { code: 'not-admin', message: 'UID ' + user.uid + ' is not in public.admins.' });
+        return;
+      }
+    } catch (err) {
+      mark('chk-subs-icon', 'bad', 'Private submissions: blocked', 'chk-subs-text');
+      showTrouble('trouble', err);
+      return;
+    }
     startListening();
   }
 
@@ -182,7 +193,7 @@
   if (CONFIG_OK) {
     PrayerBoard.onAuthChange(user => { if (user) showAdmin(user); else showGate(); });
   } else {
-    gateError.textContent = 'firebase-config.js did not load. Check that it is in this folder.';
+    gateError.textContent = 'supabase-config.js did not load, or its keys are not filled in.';
     gateError.classList.add('show');
   }
 
@@ -199,13 +210,15 @@
       console.error('[CTG]', err);
       const c = err.code || '';
       gateError.textContent =
-        (c === 'auth/invalid-credential' || c === 'auth/wrong-password' || c === 'auth/user-not-found')
+        (c === 'invalid_credentials')
           ? "Email or password isn't right. Try again."
-        : (c === 'auth/operation-not-allowed')
-          ? 'Email/password sign-in is still switched off in the Firebase console.'
-        : (c === 'auth/network-request-failed')
-          ? "Couldn't reach Firebase. Check your connection."
-        : (describeFirebaseError(err).title + ' (' + c + ')');
+        : (c === 'email_not_confirmed')
+          ? 'This account’s email isn’t confirmed. In the Supabase dashboard, confirm the user (or recreate it with "Auto Confirm User").'
+        : (c === 'email_provider_disabled')
+          ? 'Email sign-in is switched off in the Supabase dashboard (Authentication → Sign In / Providers).'
+        : (err.name === 'AuthRetryableFetchError' || err instanceof TypeError)
+          ? "Couldn't reach Supabase. Check your connection."
+        : (describeDbError(err).title + ' (' + c + ')');
       gateError.classList.add('show');
     } finally {
       gateBtn.disabled = false;

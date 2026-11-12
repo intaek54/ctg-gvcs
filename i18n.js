@@ -43,7 +43,7 @@ const DICT = {
     send_prayer: "Send prayer",
     prayer_confirm: "Sent privately. You are held in thought.",
     admin_login_title: "Student Council Login",
-    admin_note: "Accounts are created in the Firebase console. There is no public sign-up.",
+    admin_note: "Accounts are created in the Supabase dashboard. There is no public sign-up.",
     admin_enter: "Enter",
     admin_db: "Database",
     admin_logout: "Log out",
@@ -86,7 +86,7 @@ const DICT = {
     send_prayer: "\uae30\ub3c4 \ubcf4\ub0b4\uae30",
     prayer_confirm: "\ube44\uacf5\uac1c\ub85c \uc804\ub2ec\ub418\uc5c8\uc2b5\ub2c8\ub2e4. \ud568\uaed8 \uae30\uc5b5\ud558\uaca0\uc2b5\ub2c8\ub2e4.",
     admin_login_title: "\ud559\uc0dd\ud68c \ub85c\uadf8\uc778",
-    admin_note: "\uacc4\uc815\uc740 Firebase \ucf58\uc194\uc5d0\uc11c \uc0dd\uc131\ub429\ub2c8\ub2e4. \uacf5\uac1c \uac00\uc785\uc740 \uc9c0\uc6d0\ub418\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.",
+    admin_note: "\uacc4\uc815\uc740 Supabase \ub300\uc2dc\ubcf4\ub4dc\uc5d0\uc11c \uc0dd\uc131\ub429\ub2c8\ub2e4. \uacf5\uac1c \uac00\uc785\uc740 \uc9c0\uc6d0\ub418\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.",
     admin_enter: "\ub85c\uadf8\uc778",
     admin_db: "\ub370\uc774\ud130\ubca0\uc774\uc2a4",
     admin_logout: "\ub85c\uadf8\uc544\uc6c3",
@@ -135,7 +135,7 @@ function applyLanguage() {
   });
 
   // Let the page re-render anything language-dependent that isn't
-  // plain static text (e.g. bilingual board entries from Firestore).
+  // plain static text (e.g. bilingual board entries from the database).
   document.dispatchEvent(new CustomEvent('ctg-lang-changed', { detail: { lang } }));
 }
 

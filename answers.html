@@ -41,10 +41,8 @@
   </div>
 </section>
 
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="firebase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="supabase-config.js"></script>
 <script src="app.js"></script>
 <script src="i18n.js"></script>
 <script>
@@ -108,7 +106,7 @@
     }, err => showTrouble('trouble', err));
   } else {
     showTrouble('trouble', { code: 'config-missing',
-      message: 'firebase-config.js did not load. Make sure it is in the same folder as this page.' });
+      message: 'supabase-config.js did not load, or its keys are not filled in.' });
   }
 
   search.addEventListener('input', render);

@@ -47,10 +47,8 @@
   </div>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="firebase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="supabase-config.js"></script>
 <script src="app.js"></script>
 <script src="i18n.js"></script>
 <script>
@@ -60,7 +58,7 @@
   const submitBtn = document.getElementById('submit-btn');
 
   function showError(err) {
-    const d = describeFirebaseError(err);
+    const d = describeDbError(err);
     console.error('[CTG]', err);
     errorMsg.innerHTML = escapeHtml(d.title) + ' \u2014 ' + escapeHtml(d.fix) +
       (err && err.code ? ' <code>' + escapeHtml(err.code) + '</code>' : '');
@@ -74,7 +72,7 @@
     const name = document.getElementById('name').value;
 
     if (!CONFIG_OK) {
-      showError({ code: 'config-missing', message: 'firebase-config.js did not load.' });
+      showError({ code: 'config-missing', message: 'supabase-config.js did not load, or its keys are not filled in.' });
       return;
     }
 
