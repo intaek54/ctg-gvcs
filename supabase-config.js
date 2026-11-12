@@ -10,8 +10,8 @@
    data is the Row Level Security policies in supabase/schema.sql.
    Never put the service_role / secret key in this file.
    ============================================================ */
-const SUPABASE_URL = 'PASTE_YOUR_PROJECT_URL_HERE';
-const SUPABASE_ANON_KEY = 'PASTE_YOUR_ANON_KEY_HERE';
+const SUPABASE_URL = 'https://vroriodfxtsuiizkooqh.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_kzuu1lWkSMOvP7AkCtgZ_Q_rzdqe2zl';
 
 const sb = (SUPABASE_URL.startsWith('https://') && window.supabase)
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
