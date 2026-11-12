@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Answers — CTG</title>
+<link rel="icon" href="favicon.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="simple-header">
+  <nav class="site-nav" aria-label="Site">
+    <a class="nav-logo-link logo-mark" href="admin.html" aria-label="Student council login"></a>
+  <div class="school-name">Global Vision Christian School - Mungyeong Campus</div>
+    <div class="nav-links">
+      <a class="nav-link" href="index.html" data-i18n="nav_home">Home</a>
+      <a class="nav-link is-current" href="answers.html" data-i18n="nav_answers">Answers</a>
+      <button class="lang-toggle" type="button" aria-label="Switch language">
+        <span data-code="en">EN</span><span data-code="ko">KO</span>
+      </button>
+    </div>
+  </nav>
+</header>
+
+<section class="board-section" aria-labelledby="board-heading">
+  <div class="archive-controls">
+    <input type="search" id="search" data-i18n-placeholder="search_placeholder" placeholder="Search…">
+  </div>
+
+  <div class="board-wrap">
+    <h2 class="board-heading" id="board-heading" data-i18n="answers_heading">Answered</h2>
+
+    <div class="trouble" id="trouble" role="status"></div>
+
+    <div class="ledger" id="ledger"></div>
+    <p class="board-empty" id="board-empty" hidden data-i18n="answers_empty">Nothing posted yet — check back soon.</p>
+  </div>
+</section>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="app.js"></script>
+<script src="i18n.js"></script>
+<script>
+  const ledger = document.getElementById('ledger');
+  const boardEmpty = document.getElementById('board-empty');
+  const search = document.getElementById('search');
+  let allItems = [];
+
+  function currentLangFields() {
+    const lang = getLang();
+    return lang === 'ko'
+      ? { q: 'question_ko', a: 'answer_ko' }
+      : { q: 'question_en', a: 'answer_en' };
+  }
+
+  function render() {
+    const { q, a } = currentLangFields();
+    const badgeText = DICT[getLang()].badge_new;
+    const term = search.value.trim().toLowerCase();
+    const items = term
+      ? allItems.filter(item =>
+          (item[q] || '').toLowerCase().includes(term) ||
+          (item[a] || '').toLowerCase().includes(term))
+      : allItems;
+
+    if (!items.length) {
+      ledger.innerHTML = '';
+      boardEmpty.hidden = false;
+      return;
+    }
+    boardEmpty.hidden = true;
+
+    ledger.innerHTML = items.map(item => `
+      <div class="ledger-item" data-open="false" data-id="${item.id}">
+        <button class="ledger-question" aria-expanded="false">
+          <span class="ledger-flame" aria-hidden="true"></span>
+          <span class="ledger-question-text">${escapeHtml(item[q])}${isWithinDays(item.date, 7) ? '<span class="new-badge">' + escapeHtml(badgeText) + '</span>' : ''}</span>
+          <span class="ledger-caret" aria-hidden="true">&#9656;</span>
+        </button>
+        <div class="ledger-answer">
+          <div class="ledger-answer-inner">${escapeHtml(item[a])}</div>
+        </div>
+      </div>
+    `).join('');
+
+    ledger.querySelectorAll('.ledger-question').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const parent = btn.closest('.ledger-item');
+        const isOpen = parent.getAttribute('data-open') === 'true';
+        parent.setAttribute('data-open', String(!isOpen));
+        btn.setAttribute('aria-expanded', String(!isOpen));
+      });
+    });
+  }
+
+  if (CONFIG_OK) {
+    PrayerBoard.onBoard(items => {
+      hideTrouble('trouble');
+      allItems = items;
+      render();
+    }, err => showTrouble('trouble', err));
+  } else {
+    showTrouble('trouble', { code: 'config-missing',
+      message: 'firebase-config.js did not load. Make sure it is in the same folder as this page.' });
+  }
+
+  search.addEventListener('input', render);
+  document.addEventListener('ctg-lang-changed', render);
+</script>
+</body>
+</html>
