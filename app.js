@@ -268,6 +268,17 @@ const PrayerBoard = {
     const { error } = await sb.auth.signInWithPassword({ email, password });
     if (error) throw error;
   },
+  // Checks the current password first, so an unattended signed-in
+  // laptop can't be used to take over the account.
+  async changePassword(currentPassword, newPassword) {
+    const { data } = await sb.auth.getUser();
+    const email = data && data.user && data.user.email;
+    if (!email) throw new Error('Not signed in.');
+    const check = await sb.auth.signInWithPassword({ email, password: currentPassword });
+    if (check.error) throw check.error;
+    const { error } = await sb.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+  },
   async signOut() {
     await sb.auth.signOut();
   },
