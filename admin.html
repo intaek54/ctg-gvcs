@@ -17,13 +17,9 @@
   <div class="admin-gate-card">
     <div class="gate-logo logo-mark" role="img" aria-label="CTG logo"></div>
     <h1 data-i18n="admin_login_title">Student Council Login</h1>
-    <form id="gate-form" novalidate>
-      <input type="email" id="gate-email" placeholder="Email" autocomplete="username">
-      <input type="password" id="gate-password" placeholder="Password" autocomplete="current-password">
-      <div class="admin-gate-error" id="gate-error"></div>
-      <button type="submit" class="btn" id="gate-btn" style="width:100%;" data-i18n="admin_enter">Enter</button>
-    </form>
-    <p class="gate-note" data-i18n="admin_note">Accounts are created in the Supabase dashboard. There is no public sign-up.</p>
+    <div class="admin-gate-error" id="gate-error"></div>
+    <button type="button" class="btn" id="gate-btn" style="width:100%;" data-i18n="admin_enter">Sign in with Google</button>
+    <p class="gate-note" data-i18n="admin_note">Only Google accounts on the student council admin list can see submissions.</p>
   </div>
 </div>
 
@@ -115,7 +111,6 @@
 <script>
   const gate = document.getElementById('gate');
   const shell = document.getElementById('shell');
-  const gateForm = document.getElementById('gate-form');
   const gateBtn = document.getElementById('gate-btn');
   const gateError = document.getElementById('gate-error');
 
@@ -197,32 +192,30 @@
     gateError.classList.add('show');
   }
 
-  gateForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('gate-email').value.trim();
-    const password = document.getElementById('gate-password').value;
+  // After Google sends the browser back, a refused sign-in arrives as
+  // ?error_description=… (or #error_description=…) on this page's URL.
+  const returned = new URLSearchParams(location.search + '&' + location.hash.slice(1));
+  if (returned.get('error_description')) {
+    console.error('[CTG]', returned.get('error'), returned.get('error_description'));
+    gateError.textContent = /signups? not allowed/i.test(returned.get('error_description'))
+      ? 'This Google account is not registered for the student council.'
+      : 'Google sign-in failed: ' + returned.get('error_description');
+    gateError.classList.add('show');
+    history.replaceState(null, '', location.pathname);
+  }
+
+  gateBtn.addEventListener('click', async () => {
     gateError.classList.remove('show');
     gateBtn.disabled = true;
-    gateBtn.textContent = 'Checking…';
     try {
-      await PrayerBoard.signIn(email, password);
+      await PrayerBoard.signInWithGoogle();   // leaves the page for Google
     } catch (err) {
       console.error('[CTG]', err);
-      const c = err.code || '';
-      gateError.textContent =
-        (c === 'invalid_credentials')
-          ? "Email or password isn't right. Try again."
-        : (c === 'email_not_confirmed')
-          ? 'This account’s email isn’t confirmed. In the Supabase dashboard, confirm the user (or recreate it with "Auto Confirm User").'
-        : (c === 'email_provider_disabled')
-          ? 'Email sign-in is switched off in the Supabase dashboard (Authentication → Sign In / Providers).'
-        : (err.name === 'AuthRetryableFetchError' || err instanceof TypeError)
-          ? "Couldn't reach Supabase. Check your connection."
-        : (describeDbError(err).title + ' (' + c + ')');
+      gateError.textContent = /provider is not enabled/i.test(err.message || '')
+        ? 'Google sign-in is switched off in the Supabase dashboard (Authentication → Sign In / Providers → Google).'
+        : describeDbError(err).title;
       gateError.classList.add('show');
-    } finally {
       gateBtn.disabled = false;
-      gateBtn.textContent = 'Enter';
     }
   });
 
