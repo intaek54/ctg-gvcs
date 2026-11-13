@@ -197,8 +197,10 @@
   const returned = new URLSearchParams(location.search + '&' + location.hash.slice(1));
   if (returned.get('error_description')) {
     console.error('[CTG]', returned.get('error'), returned.get('error_description'));
-    gateError.textContent = /signups? not allowed/i.test(returned.get('error_description'))
-      ? 'This Google account is not registered for the student council.'
+    // A Google account not in council_members is refused by a database
+    // trigger, which Supabase reports as "Database error saving new user".
+    gateError.textContent = /signups? not allowed|database error saving new user/i.test(returned.get('error_description'))
+      ? 'This Google account is not on the student council list. (학생회 명단에 없는 계정이에요.)'
       : 'Google sign-in failed: ' + returned.get('error_description');
     gateError.classList.add('show');
     history.replaceState(null, '', location.pathname);

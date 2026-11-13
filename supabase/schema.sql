@@ -98,18 +98,64 @@ begin
   end if;
 end $$;
 
+-- ----- Only the student council can log in -----
+-- Admins sign in with Google. Any Google account whose email is not
+-- in council_members is refused before an account is ever created,
+-- and every email that is listed becomes an admin on first sign-in.
+create table if not exists public.council_members (
+  email text primary key check (email = lower(email))
+);
+alter table public.council_members enable row level security;
+-- No policies: managed by hand in the SQL Editor only.
+
+create or replace function public.only_council_accounts()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not exists (select 1 from public.council_members
+                 where email = lower(new.email)) then
+    raise exception 'Not a student council account: %', new.email;
+  end if;
+  return new;
+end;
+$$;
+
+create or replace function public.make_council_admin()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.admins (user_id) values (new.id) on conflict do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists only_council_accounts on auth.users;
+create trigger only_council_accounts
+  before insert on auth.users
+  for each row execute function public.only_council_accounts();
+
+drop trigger if exists make_council_admin on auth.users;
+create trigger make_council_admin
+  after insert on auth.users
+  for each row execute function public.make_council_admin();
+
 -- ============================================================
--- Adding an admin
+-- Adding a student council member
 --
--- 1. Authentication > Users > Add user > Create new user
---    (tick "Auto Confirm User").
--- 2. Copy that user's UID, then run (keep the quotes):
+-- Run this in the SQL Editor (lowercase email). They can then
+-- sign in with that Google account and are an admin right away:
 --
---    insert into public.admins (user_id)
---    values ('PASTE_THE_UID_HERE');
+--    insert into public.council_members (email)
+--    values ('someone@gvcs-mg.org');
 --
--- Or, by email:
+-- Removing one (also deletes their account and admin rights):
 --
---    insert into public.admins (user_id)
---    select id from auth.users where email = 'someone@example.com';
+--    delete from public.council_members where email = 'someone@gvcs-mg.org';
+--    delete from auth.users where email = 'someone@gvcs-mg.org';
 -- ============================================================
