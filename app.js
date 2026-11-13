@@ -264,12 +264,8 @@ const PrayerBoard = {
 
   /* ---------------- Admin auth ---------------- */
 
-  // Sends the browser to Google, which sends it back to this same page.
-  async signInWithGoogle() {
-    const { error } = await sb.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: location.origin + location.pathname },
-    });
+  async signIn(email, password) {
+    const { error } = await sb.auth.signInWithPassword({ email, password });
     if (error) throw error;
   },
   async signOut() {
